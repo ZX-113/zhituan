@@ -1,5 +1,5 @@
 import React,{useState,useRef,useEffect} from 'react';
-import { Keyboard, Pencil, Eraser, Undo2, ArrowUpRight, Wind, ArrowLeft } from 'lucide-react';
+import { Keyboard, Pencil, Eraser, Undo2, Wind } from 'lucide-react';
 import PaperScene from './PaperScene';
 import ColorPicker from './ColorPicker';
 import {paintPaper,newDoc,fitsOnPaper,W,H} from './paperContent';
@@ -25,7 +25,6 @@ export default function App(){
  function moveStroke(e){if(!stroke.current)return;if(stroke.current==='erase'){erase(point(e));return;}stroke.current.points.push(point(e));const s={...stroke.current,points:[...stroke.current.points]};update(d=>({strokes:[...d.strokes.slice(0,-1),s]}));}
  function endStroke(e){stroke.current=null;if(paper.current?.hasPointerCapture(e.pointerId))paper.current.releasePointerCapture(e.pointerId);}
  function finish(){if(!doc||failed)return;input.current?.blur();api.current?.ready(doc,paper.current.getBoundingClientRect());setPhase('ready');}
- function edit(){api.current?.hide(current);setPhase('editing');}
  function parkCurrent(){const id=currentRef.current;if(!id)return;const d=docsRef.current.find(x=>x.id===id);if(d)api.current?.park(d,paper.current.getBoundingClientRect(),pile.current.indexOf(id));}
  function promote(id){const d=docsRef.current.find(x=>x.id===id);currentRef.current=id||null;setCurrent(id||null);if(!d){setPhase('empty');return;}if(d.readonly){api.current?.ready(d,paper.current.getBoundingClientRect());setPhase('ready');}else{api.current?.hide(id);setPhase('editing');}}
  function thrown(){setPaperMoving(true);const id=currentRef.current;pile.current=pile.current.filter(x=>x!==id);promote(pile.current.at(-1));}
@@ -57,11 +56,10 @@ export default function App(){
     {phase==='empty'&&!paperMoving&&!sweeping&&<div className="empty-sheet"><button className="primary new-paper" onClick={takeNew}>拿一张纸</button></div>}
     <div className="below-paper">
      {phase==='editing'&&<button className="primary finish" onClick={finish} disabled={failed}>写完了</button>}
-     {phase==='ready'&&<div className="ready-actions">{!doc?.readonly&&<button aria-label="继续写" title="继续写" onClick={edit}><ArrowLeft size={16}/></button>}<button aria-label="扔掉" title="扔掉" onClick={()=>api.current?.drop()}><ArrowUpRight size={16}/></button></div>}
     </div>
    </div>
    <aside className={`style-panel ${phase==='editing'?'':'muted'}`}>
-    <input aria-label="字体从工整到凌乱" disabled={phase!=='editing'} type="range" min="0" max="100" value={doc?.mess||0} onChange={e=>update({mess:+e.target.value})} style={{'--value':`${doc?.mess||0}%`}}/>
+    <input onPointerDown={e=>{e.stopPropagation();input.current?.blur();e.currentTarget.focus({preventScroll:true});}} aria-label="字体从工整到凌乱" disabled={phase!=='editing'} type="range" min="0" max="100" value={doc?.mess||0} onChange={e=>update({mess:+e.target.value})} style={{'--value':`${doc?.mess||0}%`}}/>
     <div className="range-labels"><span>工整</span><span>凌乱</span></div>
    </aside>
   </main>
