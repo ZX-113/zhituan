@@ -39,7 +39,7 @@ export default function PaperScene({apiRef,onGround,onOpen,onHold,onThrow,onSwee
  const ray=new THREE.Raycaster();
  function pointerdown(e){if(!active||held||e.button!==0)return;const item=items.get(active);if(!item||item.state!=='ready')return;const bounds=canvas.current.getBoundingClientRect();const ex=e.clientX-bounds.left,ey=e.clientY-bounds.top;ray.setFromCamera(new THREE.Vector2(ex/width*2-1,1-ey/height*2),camera);if(!ray.intersectObject(item.mesh).length)return;e.preventDefault();canvas.current.setPointerCapture(e.pointerId);held={item,id:e.pointerId,x:e.clientX,y:e.clientY,last:performance.now(),dx:item.x-ex,dy:item.y-ey,start:performance.now()};item.state='held';item.target=1;callbacks.current.onHold?.(true);}
  function pointermove(e){if(!held||e.pointerId!==held.id)return;const now=performance.now(),dt=Math.max(.008,(now-held.last)/1000),i=held.item;i.vx=THREE.MathUtils.clamp((e.clientX-held.x)/dt,-1700,1700);i.vy=THREE.MathUtils.clamp((e.clientY-held.y)/dt,-1700,1700);const bounds=canvas.current.getBoundingClientRect();i.x=e.clientX-bounds.left+held.dx*(1-i.fold);i.y=e.clientY-bounds.top+held.dy*(1-i.fold);i.ry=i.vx*.0002;held.x=e.clientX;held.y=e.clientY;held.last=now;}
- function release(e){if(!held||e.pointerId!==held.id)return;const i=held.item;if(i.readonly&&performance.now()-held.start<200){i.state='ready';i.target=1;held=null;callbacks.current.onHold?.(false);if(canvas.current.hasPointerCapture(e.pointerId))canvas.current.releasePointerCapture(e.pointerId);return;}const short=!i.readonly&&performance.now()-held.start<160&&i.fold<.2;i.state=short?'ready':'flying';i.target=short?0:1;if(!short){if(performance.now()-held.last>100){i.vx=0;i.vy=0;}i.vx*=.55;i.vy*=.55;i.floor=height-55-Math.random()*65;i.bounces=0;active=null;callbacks.current.onThrow?.();}else{i.vx=i.vy=0;}held=null;callbacks.current.onHold?.(false);if(canvas.current.hasPointerCapture(e.pointerId))canvas.current.releasePointerCapture(e.pointerId);}
+ function release(e){if(!held||e.pointerId!==held.id)return;const i=held.item;if(i.readonly&&performance.now()-held.start<200){i.state='ready';i.target=1;held=null;callbacks.current.onHold?.(false);if(canvas.current.hasPointerCapture(e.pointerId))canvas.current.releasePointerCapture(e.pointerId);return;}const short=!i.readonly&&performance.now()-held.start<160&&i.fold<.2;i.state=short?'ready':'flying';i.target=short?0:1;if(!short){if(performance.now()-held.last>100){i.vx=0;i.vy=0;}i.vx*=.55;i.vy*=.55;i.floor=height-55-Math.random()*65;i.bounces=0;i.motionDeadline=performance.now()+3000;active=null;callbacks.current.onThrow?.();}else{i.vx=i.vy=0;}held=null;callbacks.current.onHold?.(false);if(canvas.current.hasPointerCapture(e.pointerId))canvas.current.releasePointerCapture(e.pointerId);}
  function animate(time){if(disposed)return;frame=requestAnimationFrame(animate);const dt=Math.min(.035,(time-previous)/1000||.016);previous=time;
  let sweepEdge=null,sweepSpeed=0;
  if(sweep){const t=Math.min(1,(time-sweep.start)/4600),x=-700+(width+1600)*t;
@@ -48,6 +48,7 @@ export default function PaperScene({apiRef,onGround,onOpen,onHold,onThrow,onSwee
  const solids=[];
  for(const i of items.values()){
   if(!i.mesh.visible)continue;
+  if(i.motionDeadline&&time>=i.motionDeadline&&['flying','dragground','sweeping'].includes(i.state)){i.vx=0;i.vy=0;i.state='ground';i.motionDeadline=0;i.dirty=true;}
   if(i.state==='flying')i.size+=(Math.min(210,width*.45)-i.size)*Math.min(1,dt*2);
   if(['ground','flying','sweeping'].includes(i.state)||(['held','ready'].includes(i.state)&&i.fold>.8)){
    i.radius=i.size*i.foldData.radius;solids.push(i);
@@ -59,13 +60,14 @@ export default function PaperScene({apiRef,onGround,onOpen,onHold,onThrow,onSwee
  else if(motionState){if(!stillSince)stillSince=time;if(time-stillSince>200){motionState=false;callbacks.current.onMotion?.(false);}}
 
  if(time-lastSync>80){lastSync=time;for(const i of solids){if(i.state==='ground'&&i.dirty){i.dirty=false;i.nx=i.x/width;i.bottom=height-i.y;callbacks.current.onGround?.(i.id,{x:i.nx,bottom:i.bottom,rotation:i.rotation,size:i.size});}}}
- if(sweep&&time-sweep.start>=4600&&sweep.ids.every(id=>{const b=items.get(id);return !b||b.x>width+b.radius;})){const ids=sweep.ids;sweep=null;broom.current.style.visibility='hidden';apiRef.current.clear(ids);callbacks.current.onSweepEnd?.(ids);}
+ if(sweep&&(time-sweep.start>=6200||(time-sweep.start>=4600&&sweep.ids.every(id=>{const b=items.get(id);return !b||b.x>width+b.radius;})))){const ids=sweep.ids;sweep=null;broom.current.style.visibility='hidden';apiRef.current.clear(ids);callbacks.current.onSweepEnd?.(ids);}
  for(const i of items.values()){
   if(!i.mesh.visible)continue;
   let old=i.fold;i.fold+=(i.target-i.fold)*Math.min(1,dt*7);if(Math.abs(i.fold-i.target)<.001)i.fold=i.target;if(old!==i.fold||!i.updated){deform(i);i.updated=true;}
   if(i.state==='opening'){const t=Math.min(1,(time-i.openStart)/1000),v=1-Math.pow(1-t,3);i.x=i.fromX+(i.rect.left+i.rect.width/2-i.fromX)*v;i.y=i.fromY+(i.rect.top+i.rect.height/2-i.fromY)*v;i.size=i.fromSize+(i.rect.width-i.fromSize)*v;i.rotation=i.fromRotation*(1-v);i.rx*=1-dt*7;i.ry*=1-dt*7;if(t===1){i.state='ready';i.readonly=true;i.fold=i.target=0;i.rx=i.ry=i.rotation=0;active=i.id;callbacks.current.onOpen?.(i.id);}}
-  i.mesh.position.set(i.x-width/2,height/2-i.y,i.state==='stacked'?(i.stackDepth||-50):50);i.mesh.scale.setScalar(i.size);i.mesh.rotation.set(i.rx,i.ry,i.rotation);
-  i.shadow.visible=i.mesh.visible&&i.state!=='stacked';i.shadow.position.set(i.x-width/2+8,height/2-(i.state==='flying'?i.floor:i.y+18),-200);let sw=['ready','opening','stacked'].includes(i.state)?i.size*.85:i.size*.6;i.shadow.scale.set(sw,sw*(i.fold>.5?.24:.95),1);i.shadow.material.opacity=i.state==='flying'?.32:.65;
+  const depth=Math.max(0,Math.min(1,(i.y-(height-240))/215)),perspective=.72+depth*.36;
+  i.mesh.position.set(i.x-width/2,height/2-i.y,i.state==='stacked'?(i.stackDepth||-50):40+depth*35);i.mesh.scale.setScalar(i.size*perspective);i.mesh.rotation.set(i.rx,i.ry,i.rotation);const shade=.62+depth*.38;i.mesh.material.forEach(m=>m.color.setScalar(shade));
+  i.shadow.visible=i.mesh.visible&&i.state!=='stacked';i.shadow.position.set(i.x-width/2+8,height/2-(i.state==='flying'?i.floor:i.y+18),-200);let sw=(['ready','opening','stacked'].includes(i.state)?i.size*.85:i.size*.6)*perspective;i.shadow.scale.set(sw,sw*(i.fold>.5?.24:.95),1);i.shadow.material.opacity=(i.state==='flying'?.32:.65)*(.55+depth*.45);
  }
  renderer.render(scene,camera);
  }
@@ -73,15 +75,15 @@ export default function PaperScene({apiRef,onGround,onOpen,onHold,onThrow,onSwee
   ready(doc,rect){rect=localRect(rect);const i=build(doc,rect);i.readonly=!!doc.readonly;i.state='ready';i.mesh.visible=i.shadow.visible=true;i.x=rect.left+rect.width/2;i.y=rect.top+rect.height/2;i.size=rect.width;i.rx=i.ry=i.rotation=0;i.fold=i.target=0;i.updated=false;active=doc.id;},
   grabGround(id,x,y){const i=items.get(id);if(!i||i.state!=='ground')return false;const r=canvas.current.getBoundingClientRect();i.state='dragground';i.dragOffsetX=i.x-(x-r.left);i.dragOffsetY=i.y-(y-r.top);i.dragX=x;i.dragY=y;i.dragTime=performance.now();i.vx=i.vy=0;return true;},
   moveGround(id,x,y){const i=items.get(id);if(!i||i.state!=='dragground')return;const now=performance.now(),dt=Math.max(.008,(now-i.dragTime)/1000),r=canvas.current.getBoundingClientRect();i.vx=THREE.MathUtils.clamp((x-i.dragX)/dt,-1800,1800);i.vy=THREE.MathUtils.clamp((y-i.dragY)/dt,-1800,1800);i.x=x-r.left+i.dragOffsetX;i.y=y-r.top+i.dragOffsetY;i.ry=i.vx*.00015;i.dragX=x;i.dragY=y;i.dragTime=now;},
-  releaseGround(id,cancel=false){const i=items.get(id);if(!i||i.state!=='dragground')return;if(cancel||performance.now()-i.dragTime>120)i.vx=i.vy=0;i.vx*=.6;i.vy*=.6;i.state='flying';i.floor=height-70;i.target=1;i.bounces=0;},
+  releaseGround(id,cancel=false){const i=items.get(id);if(!i||i.state!=='dragground')return;if(cancel||performance.now()-i.dragTime>120)i.vx=i.vy=0;i.vx*=.6;i.vy*=.6;i.state='flying';i.floor=height-70;i.target=1;i.bounces=0;i.motionDeadline=performance.now()+3000;},
   park(doc,rect,order=0){rect=localRect(rect);const i=build(doc,rect);i.readonly=!!doc.readonly;i.state='stacked';i.fold=i.target=0;i.rx=i.ry=i.rotation=0;i.stackDepth=-1200+Math.min(order,65)*16;i.x=rect.left+rect.width/2;i.y=rect.top+rect.height/2;i.size=rect.width;i.updated=false;i.mesh.visible=true;i.shadow.visible=false;if(active===doc.id)active=null;},
   hide(id){const i=items.get(id);if(i){i.mesh.visible=i.shadow.visible=false;i.state='editing';}if(active===id)active=null;},
   restore(doc){const ground=doc.ground||{x:.2,bottom:70};const i=build(doc,{left:0,top:0,width:190});i.state='ground';i.fold=i.target=1;i.x=ground.x*width;i.y=height-ground.bottom;i.nx=ground.x;i.bottom=ground.bottom;i.rotation=ground.rotation||0;i.rx=.5;i.size=ground.size||190;i.dirty=true;},
   open(id,rect){rect=localRect(rect);const i=items.get(id);if(!i)return;build({...i.doc,creased:true,readonly:true},rect);i.updated=false;i.state='opening';i.fromX=i.x;i.fromY=i.y;i.fromSize=i.size;i.fromRotation=i.rotation;i.rect=rect;i.openStart=performance.now();i.target=0;active=null;},
-  sweep(ids){if(sweep||!ids.length)return; sweep={ids,start:performance.now()};broom.current.style.visibility="visible";for(const id of ids){const i=items.get(id);if(i){i.state="sweeping";i.vx=i.vy=0;}}},
+  sweep(ids){if(sweep||!ids.length)return; sweep={ids,start:performance.now()};broom.current.style.visibility="visible";for(const id of ids){const i=items.get(id);if(i){i.state="sweeping";i.motionDeadline=0;i.vx=i.vy=0;}}},
   clear(ids){for(const id of ids){const i=items.get(id);if(!i)continue;scene.remove(i.mesh,i.shadow);i.mesh.geometry.dispose();i.mesh.material.forEach(m=>{m.map?.dispose();m.dispose()});i.shadow.material.dispose();items.delete(id);}},
   crumple(){if(active){const i=items.get(active);i.target=1;i.readonly=true;}},
-  drop(){if(!active)return;const i=items.get(active);i.fold=.3;i.target=1;i.state='flying';i.vx=350;i.vy=-280;i.floor=height-70;i.bounces=0;active=null;callbacks.current.onThrow?.();},
+  drop(){if(!active)return;const i=items.get(active);i.fold=.3;i.target=1;i.state='flying';i.vx=350;i.vy=-280;i.floor=height-70;i.bounces=0;i.motionDeadline=performance.now()+3000;active=null;callbacks.current.onThrow?.();},
   resize
  };
  resize();window.addEventListener('resize',resize);const el=canvas.current;el.addEventListener('pointerdown',pointerdown);el.addEventListener('pointermove',pointermove);el.addEventListener('pointerup',release);el.addEventListener('pointercancel',release);frame=requestAnimationFrame(animate);

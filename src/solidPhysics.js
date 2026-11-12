@@ -15,7 +15,7 @@ export function stepSolids(balls, dt, {width,height,sweepEdge=null,sweepSpeed=0}
   }
   if(b.state==='flying'){
    if(b.y<r){b.y=r;b.vy=Math.abs(b.vy)*.3;}
-   if(b.y>=b.floor){b.y=b.floor;if(b.vy>0){b.vy*=-.27;b.vx*=.8;}if(Math.abs(b.vy)<55){b.state='ground';b.vy=0;b.dirty=true;}}
+   if(b.y>=b.floor){b.y=b.floor;if(b.vy>0){b.vy*=-.27;b.vx*=.8;}if(Math.abs(b.vy)<55){b.state='ground';b.vy=0;b.motionDeadline=0;b.dirty=true;}}
   }else{
    const top=height-240+r,bottom=height-25-r;
    if(b.y<top){b.y=top;b.vy=Math.abs(b.vy)*.3;}
